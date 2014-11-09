@@ -1,0 +1,251 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+check-drbd - Plugin to check DRBD.
+
+=head1 SYNOPSIS
+
+    check-drbd [ OPTIONS ]
+
+    check-drbd --help
+
+=head1 REFERENCE
+
+    http://www.drbd.org/users-guide/ch-admin.html#s-proc-drbd
+
+=head1 REPORTING BUGS
+
+Please report all bugs to <support(at)bloonix.de>.
+
+=head1 AUTHOR
+
+Jonny Schulz <support(at)bloonix.de>.
+
+=head1 POWERED BY
+
+     _    __ _____ _____ __  __ __ __   __
+    | |__|  |     |     |  \|  |__|\  \/  /
+    |  . |  |  |  |  |  |      |  | >    <
+    |____|__|_____|_____|__|\__|__|/__/\__\
+
+=head1 COPYRIGHT
+
+Copyright (C) 2009-2014 by Jonny Schulz. All rights reserved.
+
+=cut
+
+use strict;
+use warnings;
+use Bloonix::Plugin;
+
+# --------------------------------------------------
+# Plugin options
+# --------------------------------------------------
+
+my $plugin = Bloonix::Plugin->new(version => "0.4");
+
+$plugin->add_option(
+    name => "Minor number",
+    option => "minor",
+    value => "minor",
+    value_type => "int",
+    mandatory => 1,
+    description => "The minor number of the DRBD device to check."
+);
+
+$plugin->has_threshold(
+    keys => [qw(ua oos dw dr al ns ep lo bm ap pe nr)]
+);
+
+# --------------------------------------------------
+# Parse options
+# --------------------------------------------------
+
+my $opt = $plugin->parse_options;
+my $procdrbd = "/proc/drbd";
+
+# --------------------------------------------------
+# Load DRBD data
+# --------------------------------------------------
+
+my (%status, %load);
+
+# Store data from /proc/drbd
+#
+# %status = (
+#     1 => {
+#         ro  => 'Primary/Secondary',
+#         cs  => 'Connected',
+#         ds  => 'UpToDate/UpToDate',
+#     }
+# );
+#
+# %load = (
+#     ua  => '0',
+#     oos => '0',
+#     dw  => '50890272',
+#     dr  => '181860741',
+#     al  => '4820497',
+#     ns  => '50870304',
+#     ep  => '1',
+#     lo  => '2',
+#     bm  => '14',
+#     ap  => '12',
+#     pe  => '12',
+#     nr  => '19928',
+# );
+
+# OK example:
+#
+# 1: cs:Connected ro:Primary/Secondary ds:UpToDate/UpToDate C r----
+#    ns:10507220 nr:0 dw:10507660 dr:10116787 al:5221 bm:3327 lo:0 pe:0 ua:0 ap:0 ep:1 wo:b oos:0
+# 2: cs:Connected ro:Secondary/Primary ds:UpToDate/UpToDate C r----
+#    ns:8 nr:40 dw:48 dr:429 al:1 bm:3 lo:0 pe:0 ua:0 ap:0 ep:1 wo:b oos:0
+# 3: cs:Connected ro:Secondary/Primary ds:UpToDate/UpToDate C r----
+#    ns:8 nr:40 dw:48 dr:297 al:1 bm:3 lo:0 pe:0 ua:0 ap:0 ep:1 wo:b oos:0
+#
+# WARNING example:
+#
+# 1: cs:SyncSource ro:Primary/Secondary ds:UpToDate/Inconsistent C r----
+#    ns:473872 nr:0 dw:10356400 dr:244263 al:3257 bm:2710 lo:218 pe:2077 ua:236 ap:2048 ep:1 wo:b oos:9876452
+#        [>....................] sync'ed:  2.4% (9644/9868)M
+#        finish: 0:02:52 speed: 57,148 (57,148) K/sec
+# 2: cs:Connected ro:Secondary/Primary ds:UpToDate/UpToDate C r----
+#    ns:8 nr:40 dw:48 dr:429 al:1 bm:3 lo:0 pe:0 ua:0 ap:0 ep:1 wo:b oos:0
+# 3: cs:Connected ro:Secondary/Primary ds:UpToDate/UpToDate C r----
+#    ns:8 nr:40 dw:48 dr:297 al:1 bm:3 lo:0 pe:0 ua:0 ap:0 ep:1 wo:b oos:0
+#
+# CRITICAL example:
+#
+# 1: cs:WFConnection ro:Primary/Unknown ds:UpToDate/DUnknown C r----
+#    ns:132 nr:0 dw:7028312 dr:7299 al:2430 bm:1929 lo:131 pe:0 ua:0 ap:131 ep:1 wo:b oos:7027740
+# 2: cs:Connected ro:Secondary/Primary ds:UpToDate/UpToDate C r----
+#    ns:8 nr:40 dw:48 dr:429 al:1 bm:3 lo:0 pe:0 ua:0 ap:0 ep:1 wo:b oos:0
+# 3: cs:Connected ro:Secondary/Primary ds:UpToDate/UpToDate C r----
+#    ns:8 nr:40 dw:48 dr:297 al:1 bm:3 lo:0 pe:0 ua:0 ap:0 ep:1 wo:b oos:0
+
+if (open my $fh, "<", $procdrbd) {
+    my ($device, $rest);
+
+    while (my $line = <$fh>) {
+        chomp $line;
+        if ($line =~ /^\s*(\d+):\s+(.+)/) {
+            ($device, $rest) = ($1, $2);
+
+            if ($opt->{skip}->{$device}) {
+                $device = undef;
+                next;
+            }
+
+            foreach my $pair (split /\s+/, $rest) {
+                if ($pair =~ /^(cs|ro|ds):([^\s]+)\z/) {
+                    $status{$device}{$1} = $2;
+                }
+            }
+        } elsif (defined $device && $line =~ /^\s*ns:/) {
+            foreach my $pair (split /\s+/, $line) {
+                if ($pair =~ /^(ns|nr|dw|dr|al|bm|lo|pe|ua|ap|ep|oos):(\d+)\z/) {
+                    $load{$device}{$1} = $2;
+                }
+            }
+        } elsif (defined $device && $line =~ /^\s*\[[=>.]+\]\s+sync'ed:\s*(.+)$/) {
+            $status{$device}{synced} = $1;
+        } elsif (defined $device && $line =~ /^\s*finish:\s*(.+)$/) {
+            $status{$device}{finish} = $1;
+        }
+    }
+} else {
+    $plugin->exit(
+        status => "CRITICAL",
+        message => "unable to read '$procdrbd'"
+    );
+}
+
+# --------------------------------------------------
+# Check status and thresholds
+# --------------------------------------------------
+
+if (!exists $status{$opt->{minor}}) {
+    $plugin->exit(
+        status => "UNKNOWN",
+        message => "drbd device $opt->{minor} does not exists"
+    );
+}
+
+my $stat = $status{$opt->{minor}};
+my $status = "OK";
+my @message = ();
+
+my $primary = 0;
+
+if ($stat->{cs} !~ /^(SyncSource|SyncTarget|Connected)\z/) {
+    $status = "CRITICAL";
+}
+
+foreach my $s (split /\//, $stat->{ro}) {
+    if ($s eq "Primary") {
+        $primary++;
+    } elsif ($s ne "Secondary") {
+        $status = "CRITICAL";
+    }
+}
+
+if ($primary == 0) {
+    $status = "CRITICAL";
+}
+
+foreach my $s (split /\//, $stat->{ds}) {
+    if ($s eq "Inconsistent" && $stat->{cs} =~ /^(SyncSource|SyncTarget)\z/) {
+        if ($status eq "OK") {
+            $status = "WARNING";
+        }
+    } elsif ($s ne "UpToDate") {
+        $status = "CRITICAL";
+    }
+}
+
+if ($status ne "OK") {
+    my $synced = $stat->{synced};
+    my $finish = $stat->{finish};
+
+    if ($synced && $finish) {
+        push @message, join(" ",
+            "$opt->{minor}:[cs:$status{$opt->{minor}}{cs}",
+            "ro:$status{$opt->{minor}}{ro}",
+            "ds:$status{$opt->{minor}}{ds}",
+            "synced: $synced",
+            "finish: $finish]",
+        );
+    } else {
+        push @message, join(" ",
+            "$opt->{minor}:[cs:$status{$opt->{minor}}{cs}",
+            "ro:$status{$opt->{minor}}{ro}",
+            "ds:$status{$opt->{minor}}{ds}]",
+        );
+    }
+} else {
+    push @message, "$opt->{minor}:[OK]";
+}
+
+# --------------------------------------------------
+# Print status
+# --------------------------------------------------
+
+my $result = $plugin->check_thresholds(
+    stats => $load{$opt->{minor}}
+);
+
+if (($status eq "OK" && $result->{status} ne "OK") || ($status eq "WARNING" && $result->{status} eq "CRITICAL")) {
+    $status = $result->{status};
+}
+
+if ($result->{upshot}) {
+    push @message, $result->{upshot};
+}
+
+$plugin->exit(
+    status => $status,
+    message => join(", ", @message),
+    stats => $load{$opt->{minor}}
+);

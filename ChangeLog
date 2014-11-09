@@ -1,0 +1,28 @@
+bloonix-plugins-drbd (0.7) released at 2014-11-03
+
+    * Updated the license information.
+
+bloonix-plugins-drbd (0.6) released at 2014-08-25
+
+    * Licence added and old releases deleted.
+
+bloonix-plugins-drbd (0.5) released at 2014-03-23
+
+    * Complete rewrite of all plugins.
+
+bloonix-plugins-drbd (0.4) released at 2013-12-17
+
+    * Implemented Bloonix::Plugin.
+
+bloonix-plugins-drbd (0.3) released at 2013-05-14
+
+    * The statistics of all plugins is now printed in JSON format.
+
+bloonix-plugins-drbd (0.2) released at 2012-09-13
+
+    * Fixed a bug in check-drbd. DRBD devices 0 are
+      not skipped any more.
+
+bloonix-plugins-drbd (0.1) released at 2011-08-30
+
+    * Initial release.

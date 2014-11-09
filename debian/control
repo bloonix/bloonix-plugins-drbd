@@ -1,0 +1,13 @@
+Source: bloonix-plugins-drbd
+Section: net
+Priority: extra
+Maintainer: Jonny Schulz <js@bloonix.de>
+Build-Depends: debhelper (>= 7)
+Standards-Version: 3.7.3
+Homepage: http://www.bloonix.de/
+
+Package: bloonix-plugins-drbd
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, bloonix-core
+Description: Bloonix Plugins DRBD
+ bloonix-plugins-drbd provides plugins to monitor DRBD devices.

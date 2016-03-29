@@ -1,6 +1,6 @@
 Summary: Bloonix plugins to check DRBD.
 Name: bloonix-plugins-drbd
-Version: 0.7
+Version: 0.8
 Release: 1%{dist}
 License: Commercial
 Group: Utilities/System
@@ -52,6 +52,8 @@ rm -rf %{buildroot}
 %doc %attr(0444, root, root) %{docdir}/LICENSE
 
 %changelog
+* Tue Mar 29 2016 Jonny Schulz <js@bloonix.de> - 0.8-1
+- Extra release because the gpg key of bloonix is updated.
 * Mon Nov 03 2014 Jonny Schulz <js@bloonix.de> - 0.7-1
 - Updated the license information.
 * Tue Aug 26 2014 Jonny Schulz <js@bloonix.de> - 0.6-1
